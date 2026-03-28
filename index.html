@@ -382,7 +382,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 <div class="screen hidden" id="scStock">
   <div class="stock-hdr">
     <div>
-      <div class="stock-hdr-title">Revisión de stock</div>
+      <div class="stock-hdr-title">Revisión de stock <button onclick="refetchMenu()" style="margin-left:8px; background:rgba(237,227,207,.15); border:1px solid rgba(237,227,207,.3); color:var(--crema); border-radius:6px; padding:3px 7px; font-size:9px; font-weight:700; cursor:pointer;">↻ Actualizar Sheets</button></div>
       <div class="stock-hdr-sub">Marcá lo que no hay antes de empezar el turno</div>
     </div>
     <button class="stock-close-btn" onclick="closeStock()">Listo →</button>
@@ -583,7 +583,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 ══════════════════════════════════════ */
 const CONFIG = {
   // 👇 PEGA AQUÍ LA NUEVA URL DE TU GOOGLE APPS SCRIPT 👇
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbx9U47HA-eo0nM9eKamW7jHMnugOrkuK4Cr4PbJjghdPpBCTgAZL4TGQjQxtEUPKXdeHg/exec'
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbz0WJsGkJeb94VOZ7Z_GbLgtbjwwgKJjyZZSdq6ruh-epdySCQWOaHRf3Kyb_t9K9qBzw/exec'
 };
 
 /* Variables globales y estado */
@@ -599,7 +599,7 @@ let loginPinBuf='', loginPinTries=0;
 let cartPagaAhora=null, cartPayMethod='', cartPropMethod='';
 let menuLoaded = false;
 let clockInterval = null;
-let pauseSync = 0; // Evita parpadeos UI en sincronización
+let pauseSync = 0; 
 
 /* ══════════════════════════════════════
    UTILS FUNDAMENTALES
@@ -611,10 +611,10 @@ function normalize(s){
     .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n');
 }
 
-function pausePolling() { pauseSync = Date.now() + 6000; } // Congela actualización de fondo por 6s al interactuar
+function pausePolling() { pauseSync = Date.now() + 6000; } 
 
 /* ══════════════════════════════════════
-   LOCAL STORAGE (Solo para Carrito y Login)
+   LOCAL STORAGE 
 ══════════════════════════════════════ */
 function saveSession() { try { localStorage.setItem('pila_session', JSON.stringify({S, seq})); } catch(e) {} }
 function loadSession() { try { const d = localStorage.getItem('pila_session'); if(d) { const j = JSON.parse(d); S=j.S||{user:'',turno:'',fecha:''}; seq=j.seq||0; } } catch(e){} }
@@ -673,11 +673,11 @@ function fallbackSHA256(ascii) {
 let isSyncing = false;
 async function backgroundSync(isInitial = false) {
   if (isSyncing || !CONFIG.GAS_URL || CONFIG.GAS_URL === 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') return;
-  if (!isInitial && Date.now() < pauseSync) return; // Evita parpadeos si justo tocaste algo
+  if (!isInitial && Date.now() < pauseSync) return; 
   
   isSyncing = true;
   try {
-    const res = await fetch(CONFIG.GAS_URL + '?t=' + Date.now()); // Fuerza menú fresco
+    const res = await fetch(CONFIG.GAS_URL + '?t=' + Date.now()); 
     const data = await res.json();
     
     // 1. Usuarios
@@ -698,15 +698,19 @@ async function backgroundSync(isInitial = false) {
     }));
     MENU = [...MENU_BASE]; 
 
-    // 3. Pedidos Activos (Nube)
+    // 3. Pedidos Activos (Nube + Conservar Cerrados Locales)
     const remoteOrders = data.activeOrders || [];
+    const closedOrders = orders.filter(o => o.status === 'cerrado'); 
+    
     orders = remoteOrders.map(ro => {
       const lo = orders.find(o => o.id === ro.id);
-      return { ...ro, expanded: lo ? lo.expanded : ro.expanded }; // Conserva tu visualización expandida
+      return { ...ro, expanded: lo ? lo.expanded : ro.expanded }; 
     });
-    orders.sort((a,b) => b.timestamp - a.timestamp); // Más nuevos arriba
+    // Volvemos a meter los cerrados que ya no están en la nube (están en Excel) pero los necesitamos en el historial local
+    closedOrders.forEach(co => { if(!orders.find(o=>o.id===co.id)) orders.push(co); });
 
-    // Actualiza Vistas
+    orders.sort((a,b) => b.timestamp - a.timestamp); 
+
     updateUI();
     if(mf==='curso' || mf==='listo' || mf==='historial') renderOrders();
     renderProds();
@@ -744,7 +748,7 @@ window.onload = async () => {
 
 function startClock() { 
   if(clockInterval) clearInterval(clockInterval); 
-  clockInterval = setInterval(()=> { backgroundSync(); }, 10000); // Consulta la nube cada 10 seg
+  clockInterval = setInterval(()=> { backgroundSync(); }, 10000); 
 }
 
 /* ══════════════════════════════════════
@@ -897,7 +901,6 @@ function renderProds(){
   }).join(''):'<div style="text-align:center;padding:30px;color:var(--marron3);grid-column:1/-1">Nada por acá 🔍</div>';
   renderAgotadosBanner();
 }
-
 function startLP(e,id){clearLP();lpTimer=setTimeout(()=>{clearLP();openLP(id);},600);}
 function clearLP(){clearTimeout(lpTimer);lpTimer=null;}
 function openLP(id){
@@ -994,7 +997,7 @@ function submitOrder(){
   const prop = parseInt(document.getElementById('cartPropina').value)||0;
   if(prop > 0 && !cartPropMethod && cartPagaAhora) { toast('Elegí vía de propina','r'); return; }
 
-  seq++; saveSession(); // Actualiza seq en Local Storage
+  seq++; saveSession(); 
 
   const items=keys.map(id=>{const p=MENU.find(x=>x.id==id);return{id:p.id,name:p.name,qty:cart[id],price:p.price,e:p.e,cat:p.cat,status:'activo',note:cartNotes[id]||'',receta:p.receta,presentacion:p.presentacion};});
   
@@ -1012,7 +1015,7 @@ function submitOrder(){
   document.getElementById('cname').value=''; 
   closeCart(); updateUI(); renderProds(); toast('Pedido #'+seq+' ✓','g'); goManage();
   
-  pushOrderToCloud(order); // Manda a la nube
+  pushOrderToCloud(order); 
 }
 
 /* ══════════════════════════════════════
@@ -1058,8 +1061,8 @@ function renderOrders(){
         let recHtml = '';
         if (o.expanded && (item.receta || item.presentacion)) {
             recHtml = `<div class="oi-receta">`;
-            if (item.receta) recHtml += `📖 ${item.receta}<br>`;
-            if (item.presentacion) recHtml += `🍽️ ${item.presentacion}`;
+            if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}<br>`;
+            if (item.presentacion) recHtml += `<span style="font-weight:900;">🍽️ Presentación:</span> ${item.presentacion}`;
             recHtml += `</div>`;
         }
         
