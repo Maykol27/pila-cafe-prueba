@@ -211,7 +211,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .mf.on.st-listo{background:var(--rojo);border-color:var(--rojo);color:white;}
 .filters-right{display:flex;gap:5px;margin-left:auto;}
 
-/* ── EN CURSO (1 Columna en móviles para lectura) ── */
+/* ── EN CURSO Y A COBRAR (Item states) ── */
 .curso-grid{padding:10px 11px 70px;display:grid;grid-template-columns:1fr;gap:9px;}
 @media(min-width: 600px) { .curso-grid{grid-template-columns:1fr 1fr;} }
 .curso-card{background:var(--bone);border-radius:14px;padding:11px;box-shadow:var(--shadow);border-left:4px solid var(--naranja);cursor:pointer;}
@@ -223,9 +223,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .cc-precoby{background:var(--verde-l);color:var(--verde);font-size:9px;font-weight:700;padding:2px 7px;border-radius:6px;flex-shrink:0;}
 .curso-card.expanded{border-left-color:var(--naranja);box-shadow:var(--shadow2);}
 .curso-card.precob{border-left-color:var(--verde);}
-.oi-receta{font-size:10px;color:var(--marron2);background:var(--verde-l);border:1px solid rgba(42,122,106,.2);padding:4px 8px;border-radius:6px;margin:2px 0 6px 19px;line-height:1.3;}
 
-/* ── A COBRAR ── */
 .olist{padding:9px 11px 70px;display:flex;flex-direction:column;gap:9px;}
 .noo{text-align:center;padding:40px 20px;color:var(--marron3);font-size:14px;font-weight:700;}
 .oc{background:var(--bone);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);border-left:5px solid transparent;}
@@ -243,11 +241,14 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .ocb{padding:0 12px;overflow:hidden;max-height:0;transition:max-height .35s cubic-bezier(.4,0,.2,1);}
 .oc.expanded .ocb{max-height:900px;}
 .ocitems{padding-bottom:3px;}
+
+/* Estilos de items cancelados/reemplazados */
 .oi{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--crema2);flex-wrap:wrap;}
 .oi:last-child{border-bottom:none;}
 .oi.xc .oiname{text-decoration:line-through;color:var(--marron3);}
 .oi.xr .oiname{color:var(--azul);}
 .oi-cambio-from{font-size:9px;color:var(--marron3);text-decoration:line-through;padding:0 0 3px 19px;width:100%;}
+.oi-receta{font-size:10px;color:var(--marron2);background:var(--verde-l);border:1px solid rgba(42,122,106,.2);padding:4px 8px;border-radius:6px;margin:2px 0 6px 19px;line-height:1.3;width:100%;}
 .oiemo{font-size:13px;flex-shrink:0;}
 .oiname{flex:1;font-size:12px;font-weight:700;min-width:0;}
 .oiqty{font-size:10px;color:var(--marron3);}
@@ -1054,8 +1055,21 @@ function renderOrders(){
       const mins = Math.floor((Date.now() - o.timestamp)/60000);
       const timeClass = mins > 10 ? 'color:var(--rojo)' : mins > 5 ? 'color:var(--amar2)' : '';
       const precoby=o.estadoPago==='cobrado_antes'?`<span class="cc-precoby">✓ Cobrado</span>`:'';
-      const itemsDetail=o.items.filter(i=>i.status!=='cancelado').map(item=>{
+      
+      const itemsDetail=o.items.map(item=>{
+        const isC = item.status === 'cancelado';
+        const isR = item.status === 'reemplazado';
+        const bdg = isC ? '<span class="ibdg bc">Sin stock</span>' : isR ? '<span class="ibdg" style="background:var(--azul-l);color:var(--azul)">Cambio</span>' : '';
+        
+        let ac = '';
+        if (!isC && !isR) {
+          ac = `<div class="iac"><button class="ibtn ir" onclick="event.stopPropagation();openRep(${o.id},${item.id})">⇄</button><button class="ibtn ic" onclick="event.stopPropagation();cancelItem(${o.id},${item.id})">✕</button></div>`;
+        } else {
+          ac = `<div class="iac"><button class="ibtn ix" onclick="event.stopPropagation();restItem(${o.id},${item.id})">↩</button></div>`;
+        }
+        
         const nt=item.note?`<div class="oinote">↳ ${item.note}</div>`:'';
+        const fromLine=isR&&item.originalName?`<div class="oi-cambio-from">era: ${item.originalE||''} ${item.originalName}</div>`:'';
         
         let recHtml = '';
         if (o.expanded && (item.receta || item.presentacion)) {
@@ -1065,8 +1079,9 @@ function renderOrders(){
             recHtml += `</div>`;
         }
         
-        return `<div class="oi" style="padding:5px 0"><span class="oiemo">${item.e}</span><span class="oiname" style="font-size:13px">${item.name}</span><span class="oiqty" style="font-size:11px;font-weight:900">x${item.qty}</span></div>${recHtml}${nt}`;
+        return `<div class="oi${isC?' xc':''}${isR?' xr':''}" style="padding:5px 0"><span class="oiemo">${item.e}</span><span class="oiname" style="font-size:13px">${item.name}</span><span class="oiqty" style="font-size:11px;font-weight:900">x${item.qty}</span>${bdg}${ac}</div>${fromLine}${recHtml}${nt}`;
       }).join('');
+      
       return `<div class="curso-card${o.expanded?' expanded':''}${o.estadoPago==='cobrado_antes'?' precob':''}" onclick="toggleCursoCard(${o.id})">
         <div class="cc-header"><div class="cc-num">#${o.seq}</div><div class="cc-name">${o.name}</div>${precoby}<div class="cc-time" style="font-weight:900;${timeClass}">${mins}m</div></div>
         <div class="cc-items-detail" style="margin-bottom:7px">${itemsDetail}</div>
@@ -1083,7 +1098,7 @@ function renderOrders(){
 function buildListoCard(o){
   const at=calcTotal(o), itemsHtml=o.items.map(item=>{
     const isC=item.status==='cancelado',isR=item.status==='reemplazado', bdg=isC?'<span class="ibdg bc">Sin stock</span>':isR?'<span class="ibdg" style="background:var(--azul-l);color:var(--azul)">Cambio</span>':'', pr=isC?'<span class="oiprice" style="color:var(--marron3)">—</span>':`<span class="oiprice">$${(item.price*item.qty).toLocaleString('es-AR')}</span>`;
-    let ac=''; if(!isC&&!isR)ac=`<div class="iac"><button class="ibtn ir" onclick="openRep(${o.id},${item.id})">⇄</button><button class="ibtn ic" onclick="cancelItem(${o.id},${item.id})">✕</button></div>`; else if(isC||isR)ac=`<div class="iac"><button class="ibtn ix" onclick="restItem(${o.id},${item.id})">↩</button></div>`;
+    let ac=''; if(!isC&&!isR)ac=`<div class="iac"><button class="ibtn ir" onclick="event.stopPropagation();openRep(${o.id},${item.id})">⇄</button><button class="ibtn ic" onclick="event.stopPropagation();cancelItem(${o.id},${item.id})">✕</button></div>`; else if(isC||isR)ac=`<div class="iac"><button class="ibtn ix" onclick="event.stopPropagation();restItem(${o.id},${item.id})">↩</button></div>`;
     const nt=item.note?`<div class="oinote">↳ ${item.note}</div>`:''; return `<div class="oi${isC?' xc':''}${isR?' xr':''}"><span class="oiemo">${item.e}</span><span class="oiname">${item.name}</span><span class="oiqty">x${item.qty}</span>${bdg}${pr}${ac}</div>${nt}`;
   }).join('');
   const pbs=PAYS.map(p=>`<div class="popt${o.payMethod===p.k?' sel':''}" onclick="setPay(${o.id},'${p.k}')"><span class="popt-icon">${p.i}</span><div class="popt-name">${p.k}</div></div>`).join('');
@@ -1122,7 +1137,65 @@ function restItem(oid,iid){
   if(item.status==='reemplazado'&&item.originalName){ const origP=MENU_BASE.find(p=>p.name===item.originalName); if(origP){item.id=origP.id;item.name=origP.name;item.price=origP.price;item.e=origP.e;item.cat=origP.cat;} delete item.originalName;delete item.originalE; }
   item.status='activo';item.note=''; saveLocal();renderOrders();
 }
-function openRep(oid,iid){ /* Se omite para resumir (ya implementado arriba) */ }
+
+/* ── FUNCIONES DE REEMPLAZO RESTAURADAS ── */
+let repAllItems=[];
+function openRep(oid,iid){
+  const o=orders.find(x=>x.id===oid),item=o&&o.items.find(i=>i.id===iid);if(!item)return;
+  repCtx={oid,iid};
+  document.getElementById('shTitle').textContent='Reemplazar: '+item.name;
+  const sc=MENU.filter(p=>p.cat===item.cat&&p.id!==item.id&&p.disponible);
+  const ot=MENU.filter(p=>p.cat!==item.cat&&p.id!==item.id&&p.disponible);
+  repAllItems=[...sc,...ot];
+  const rs=document.getElementById('repSearch');if(rs)rs.value='';
+  renderRepList(repAllItems, item);
+  document.getElementById('repOv').classList.add('open');
+}
+function renderRepList(list, refItem){
+  if(!refItem&&repCtx){
+    const o=orders.find(x=>x.id===repCtx.oid);
+    refItem=o&&o.items.find(i=>i.id===repCtx.iid);
+  }
+  document.getElementById('rlist').innerHTML=list.map(p=>{
+    const d=refItem?(p.price-refItem.price):0;
+    const dt=d===0?'':(d>0
+      ?`<span class="rdiff" style="color:var(--terrac)">+$${d.toLocaleString('es-AR')}</span>`
+      :`<span class="rdiff" style="color:var(--verde)">−$${Math.abs(d).toLocaleString('es-AR')}</span>`);
+    return `<div class="ritem" onclick="doRep(${p.id})">
+      <span class="remo">${p.e}</span>
+      <div class="rinfo"><div class="rname">${p.name}</div><div class="rprice">$${p.price.toLocaleString('es-AR')}${dt}</div></div>
+    </div>`;
+  }).join('')||'<div style="text-align:center;padding:20px;font-size:13px;color:var(--marron3)">Sin resultados 🔍</div>';
+}
+function filterRep(){
+  const q=normalize(document.getElementById('repSearch').value);
+  if(!q){renderRepList(repAllItems);return;}
+  const filtered=repAllItems.filter(p=>normalize(p.name).includes(q)||normalize(p.cat).includes(q));
+  renderRepList(filtered);
+}
+function doRep(newId){
+  const ctx=repCtx;
+  closeRep();
+  if(!ctx)return;
+  const o=orders.find(x=>x.id===ctx.oid);
+  const item=o&&o.items.find(i=>i.id===ctx.iid);
+  const newP=MENU.find(p=>p.id===newId);
+  if(!item||!newP)return;
+  const old=item.name;
+  const oldE=item.e;
+  item.originalName=item.originalName||old;
+  item.originalE=item.originalE||oldE;
+  item.id=newP.id;item.name=newP.name;item.price=newP.price;item.e=newP.e;item.cat=newP.cat;
+  item.status='reemplazado';
+  item.note='Cambio de: '+old;
+  item.receta=newP.receta;
+  item.presentacion=newP.presentacion;
+  saveLocal();
+  renderOrders();
+  toast(old+' → '+newP.name,'g');
+}
+function closeRep(){document.getElementById('repOv').classList.remove('open');repCtx=null;repAllItems=[];}
+
 /* PAY MODS */
 function setPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.payMethod=m;saveLocal();renderOrders();}}
 function setPPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.propinaPay=m;saveLocal();renderOrders();}}
