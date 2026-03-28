@@ -169,7 +169,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .lp-sheet{background:var(--bone);border-radius:20px 20px 0 0;padding:13px 17px 30px;width:100%;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
 .lp-overlay.open .lp-sheet{transform:translateY(0);}
 .lp-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;margin-bottom:9px;}
-.lp-receta{display:none;background:var(--verde-l);border:1px solid rgba(42,122,106,.2);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11px;line-height:1.5;color:var(--marron2);}
+.lp-receta{display:none;background:var(--verde-l);border:1px solid rgba(42,122,106,.2);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:13px;line-height:1.5;color:var(--marron2);}
 .lp-row{display:flex;align-items:center;gap:9px;margin-bottom:11px;}
 .lp-lbl{font-size:12px;color:var(--marron2);min-width:68px;font-weight:700;}
 .lp-note{width:100%;background:var(--crema2);border:1.5px solid var(--crema);border-radius:10px;padding:9px 11px;font-family:'Nunito',sans-serif;font-size:13px;color:var(--marron);outline:none;margin-bottom:9px;resize:none;}
@@ -249,7 +249,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .oi.xc .oiname{text-decoration:line-through;color:var(--marron3);}
 .oi.xr .oiname{color:var(--azul);}
 .oi-cambio-from{font-size:11px;color:var(--marron3);text-decoration:line-through;padding:0 0 6px 32px;width:100%;}
-.oi-receta{font-size:13px;color:var(--marron2);background:var(--verde-l);border:1px solid rgba(42,122,106,.2);padding:8px 12px;border-radius:8px;margin:4px 0 10px 32px;line-height:1.4;width:100%;}
+.oi-receta{font-size:14px;color:var(--marron2);background:var(--verde-l);border:1px solid rgba(42,122,106,.2);padding:10px 14px;border-radius:10px;margin:4px 0 10px 32px;line-height:1.5;width:100%;}
 .oiemo{font-size:24px;flex-shrink:0;width:32px;text-align:center;}
 .oiname{flex:1;font-size:18px;font-weight:700;min-width:0;}
 .oiqty{font-size:16px;font-weight:900;color:var(--marron);}
@@ -499,7 +499,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
     <div class="curso-grid" id="cursoGrid" style="display:none"></div>
     <div class="olist" id="olist" style="display:none"></div>
     <div id="planwrap" style="display:none" class="planwrap">
-      <div class="plan-title">Historial del turno</div>
+      <div class="plan-title">Historial del turno compartido</div>
       <div id="planContent"></div>
       <div class="pago-totales" id="pagoTotales"></div>
       <div class="extra-fields">
@@ -583,7 +583,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 ══════════════════════════════════════ */
 const CONFIG = {
   // 👇 PEGA AQUÍ LA NUEVA URL DE TU GOOGLE APPS SCRIPT 👇
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbz0WJsGkJeb94VOZ7Z_GbLgtbjwwgKJjyZZSdq6ruh-epdySCQWOaHRf3Kyb_t9K9qBzw/exec'
+  GAS_URL: 'https://script.google.com/macros/s/AKfycby25FQdjHmkSdAweFV8kusWflaxYpV2_IsxTE24wPsv8VJYvN04Mxvwr5h34oyq1aqrXw/exec'
 };
 
 /* Variables globales y estado */
@@ -621,6 +621,24 @@ function loadSession() { try { const d = localStorage.getItem('pila_session'); i
 function saveCart() { try { localStorage.setItem('pila_cart', JSON.stringify({cart, cartNotes})); } catch(e) {} }
 function loadCart() { try { const d = localStorage.getItem('pila_cart'); if(d){ const j=JSON.parse(d); cart=j.cart||{}; cartNotes=j.cartNotes||{}; } } catch(e){} }
 function clearSession() { try { localStorage.removeItem('pila_session'); localStorage.removeItem('pila_cart'); } catch(e){} }
+function saveLocal() {
+  try {
+    const state = { S, cart, cartNotes, orders, seq, menuStock: MENU.map(p=>({id:p.id, disp:p.disponible})) };
+    localStorage.setItem('pila_state', JSON.stringify(state));
+  } catch(e) { console.error('No se pudo guardar la memoria local', e); }
+}
+function loadLocal() {
+  try {
+    const data = localStorage.getItem('pila_state');
+    if(data){
+      const p = JSON.parse(data);
+      S=p.S||{user:'',turno:'',fecha:''}; cart=p.cart||{}; cartNotes=p.cartNotes||{}; orders=p.orders||[]; seq=p.seq||0;
+      return p.menuStock;
+    }
+  } catch(e) { console.error('Error cargando memoria', e); }
+  return null;
+}
+function clearLocal() { try{localStorage.removeItem('pila_state');}catch(e){} }
 
 /* ══════════════════════════════════════
    SEGURIDAD (MOTOR INTERNO SHA-256)
@@ -700,16 +718,23 @@ async function backgroundSync(isInitial = false) {
 
     // 3. Pedidos Activos (Nube + Conservar Cerrados Locales)
     const remoteOrders = data.activeOrders || [];
-    const closedOrders = orders.filter(o => o.status === 'cerrado'); 
+    const closedOrders = orders.filter(o => o.status === 'cerrado' || o.status === 'cancelado'); 
     
     orders = remoteOrders.map(ro => {
       const lo = orders.find(o => o.id === ro.id);
+      // Escudo local: Si localmente ya lo cerramos, ignoramos si la nube viene atrasada
+      if (lo && (lo.status === 'cerrado' || lo.status === 'cancelado') && (ro.status === 'curso' || ro.status === 'listo')) {
+         return lo;
+      }
       return { ...ro, expanded: lo ? lo.expanded : ro.expanded }; 
     });
-    // Volvemos a meter los cerrados que ya no están en la nube (están en Excel) pero los necesitamos en el historial local
+    
+    // Reinyectar los cerrados que ya no están en la nube pero sí en este turno
     closedOrders.forEach(co => { if(!orders.find(o=>o.id===co.id)) orders.push(co); });
 
     orders.sort((a,b) => b.timestamp - a.timestamp); 
+    
+    saveLocal();
 
     updateUI();
     if(mf==='curso' || mf==='listo' || mf==='historial') renderOrders();
@@ -724,6 +749,7 @@ async function backgroundSync(isInitial = false) {
 window.onload = async () => {
   loadSession();
   loadCart();
+  const localStock = loadLocal(); // Restaura state si hay
 
   const loader = document.getElementById('menuLoader');
   if (!CONFIG.GAS_URL || CONFIG.GAS_URL === 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
@@ -782,13 +808,18 @@ async function doLogin(){
   }
   
   S={user:u,turno:t,fecha:new Date().toLocaleDateString('es-AR')};
-  saveSession(); 
   
+  if (orders.length === 0 && Object.keys(cart).length === 0) {
+    MENU=MENU.map(p=>({...p,disponible:true}));
+  }
+
   document.getElementById('chip1').textContent=u+' · '+t;
   document.getElementById('chip2').textContent=u+' · '+t;
   resetPin(); loginPinTries=0;
   
+  saveSession(); saveLocal();
   startClock();
+  
   hide('scLogin');
   renderStockFaltantes();
   show('scStock');
@@ -804,7 +835,7 @@ function doLogout(){
       if(closedCount > 0) {
         finalizarTurno(true); 
       } else {
-        clearSession(); 
+        clearSession(); clearLocal();
         location.reload(); 
       }
   });
@@ -834,6 +865,7 @@ function toggleStock(id){
   const p=MENU.find(x=>x.id===id); 
   if(p){
     p.disponible=!p.disponible; 
+    saveLocal();
     renderStockFaltantes();
     syncStockToCloud();
   } 
@@ -849,13 +881,29 @@ function closeStock(){
   try {
     const faltantes = MENU.filter(p=>!p.disponible).map(p=>p.name).join(', ');
     if(faltantes && CONFIG.GAS_URL && CONFIG.GAS_URL !== 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
-      fetch(CONFIG.GAS_URL, { method:'POST', body:JSON.stringify({action:'stockReport', faltantesNombres: faltantes, turno: S.turno, fecha: S.fecha})});
+      fetch(CONFIG.GAS_URL, { 
+        method:'POST', 
+        body:JSON.stringify({action:'stockReport', faltantesNombres: faltantes, turno: S.turno || '', fecha: S.fecha || ''}),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+      }).catch(e => console.log('Envío background:', e));
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error('Error enviando reporte de faltantes:', e);
+  }
 
-  hide('scStock'); 
-  const el = document.getElementById('scStock'); if(el) el.classList.remove('active');
-  renderCats(); renderProds(); renderAgotadosBanner(); updateUI();
+  try {
+    hide('scStock'); 
+    const el = document.getElementById('scStock');
+    if(el) el.classList.remove('active');
+    
+    renderCats();
+    renderProds();
+    renderAgotadosBanner();
+    updateUI();
+  } catch(e) {
+    console.error('Error renderizando vistas:', e);
+  }
+
   show('scOrder'); 
 }
 
@@ -911,7 +959,11 @@ function openLP(id){
   const rb=document.getElementById('lpReceta');
   if(p.receta || p.presentacion){
     rb.style.display='block';
-    rb.innerHTML=`<strong style="color:var(--verde)">📖 Receta</strong><br>${p.receta ? p.receta + '<br>' : ''}${p.presentacion ? `<span>🍽 ${p.presentacion}</span>` : ''}`;
+    let text = '';
+    if (p.receta) text += `<strong style="color:var(--verde)">📖 Receta:</strong> ${p.receta}`;
+    if (p.receta && p.presentacion) text += `<br><div style="height:4px"></div>`;
+    if (p.presentacion) text += `<strong style="color:var(--terrac)">🍽️ Presentación:</strong> ${p.presentacion}`;
+    rb.innerHTML = text;
   } else {
     rb.style.display='none';
   }
@@ -923,12 +975,12 @@ function confirmLp(){
   if(!lpCtx)return; const qty=parseInt(document.getElementById('lpQty').textContent)||0, note=document.getElementById('lpNote').value.trim();
   if(qty===0)delete cart[lpCtx];else cart[lpCtx]=qty;
   if(note)cartNotes[lpCtx]=note;else delete cartNotes[lpCtx];
-  closeLp(); saveCart(); updateUI(); renderProds();
+  closeLp();saveCart();saveLocal();updateUI();renderProds();
 }
 
-function add(id){ const p=MENU.find(x=>x.id===id);if(!p||!p.disponible)return; cart[id]=(cart[id]||0)+1; saveCart(); spawnBubble();updateUI();renderProds(); }
+function add(id){ const p=MENU.find(x=>x.id===id);if(!p||!p.disponible)return; cart[id]=(cart[id]||0)+1; saveCart();saveLocal(); spawnBubble();updateUI();renderProds(); }
 function spawnBubble(){ const b=document.createElement('div');b.className='bubble';b.style.left='50vw';b.style.top='50vh';document.body.appendChild(b);setTimeout(()=>b.remove(),500); }
-function chgQty(id,d){ cart[id]=(cart[id]||0)+d; if(cart[id]<=0){delete cart[id];delete cartNotes[id];} saveCart(); updateUI();renderCart();renderProds(); }
+function chgQty(id,d){ cart[id]=(cart[id]||0)+d; if(cart[id]<=0){delete cart[id];delete cartNotes[id];} saveCart();saveLocal(); updateUI();renderCart();renderProds(); }
 function updateUI(){
   const cbdg = document.getElementById('cbdg'); if(cbdg) cbdg.textContent=Object.values(cart).reduce((s,q)=>s+q,0);
   const pend=orders.filter(o=>o.status==='curso').length;
@@ -1013,7 +1065,7 @@ function submitOrder(){
   orders.unshift(order); 
   cart={}; cartNotes={}; saveCart(); 
   document.getElementById('cname').value=''; 
-  closeCart(); updateUI(); renderProds(); toast('Pedido #'+seq+' ✓','g'); goManage();
+  closeCart(); saveLocal(); updateUI(); renderProds(); toast('Pedido #'+seq+' ✓','g'); goManage();
   
   pushOrderToCloud(order); 
 }
@@ -1061,8 +1113,9 @@ function renderOrders(){
         let recHtml = '';
         if (o.expanded && (item.receta || item.presentacion)) {
             recHtml = `<div class="oi-receta">`;
-            if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}<br>`;
-            if (item.presentacion) recHtml += `<span style="font-weight:900;">🍽️ Presentación:</span> ${item.presentacion}`;
+            if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}`;
+            if (item.receta && item.presentacion) recHtml += `<br><div style="height:6px"></div>`;
+            if (item.presentacion) recHtml += `<span style="font-weight:900; color:var(--terrac);">🍽️ Presentación:</span> ${item.presentacion}`;
             recHtml += `</div>`;
         }
         
@@ -1104,8 +1157,8 @@ function buildListoCard(o){
     <button class="closebtn" ${o.payMethod?'':'disabled'} onclick="closeOrder(${o.id})">✓ Confirmar cobro — $${at.toLocaleString('es-AR')}</button><button class="xcbtn" onclick="cancelOrder(${o.id})">Cancelar pedido</button></div>`;
   return `<div class="oc s-listo${o.expanded?' expanded':''}" id="oc-${o.id}"><div class="och" onclick="togOrder(${o.id})"><div class="ocnum">#${o.seq}</div><div class="ocinfo"><div class="ocname">${o.name}</div><div class="ocmeta">${o.hora} · ${o.encargado}</div></div><div class="octotal">$${at.toLocaleString('es-AR')}</div><span class="sbadge sb-listo">A cobrar</span></div><div class="ocb"><div class="ocitems">${itemsHtml}</div>${body}</div></div>`;
 }
-function togOrder(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;renderOrders();}}
-function toggleCursoCard(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;renderOrders();}}
+function togOrder(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;saveLocal();renderOrders();}}
+function toggleCursoCard(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;saveLocal();renderOrders();}}
 function animateClose(id){const c=document.getElementById('oc-'+id); if(c){c.classList.add('sliding-out');setTimeout(()=>renderOrders(),360);}else renderOrders(); }
 
 function deliverOrder(id){
@@ -1113,10 +1166,12 @@ function deliverOrder(id){
   o.tiempoEntrega = Math.floor((Date.now() - o.timestamp)/60000); 
   if(o.estadoPago==='cobrado_antes'){ 
     o.status='cerrado';o.expanded=false; 
+    saveLocal(); 
     pushOrderCloseToCloud(o, 'closeOrder'); 
     animateClose(id);updateUI(); toast('✓ Entregado y guardado','g'); return; 
   }
   o.status='listo';o.expanded=true; mf='listo'; 
+  saveLocal(); 
   pushOrderToCloud(o);
   renderOrders();
   document.querySelectorAll('.mf').forEach(e=>{e.classList.remove('on');if(e.textContent.includes('A cobrar'))e.classList.add('on');}); updateUI(); toast('Pedido a cobrar','g');
@@ -1127,6 +1182,7 @@ function closeOrder(id){
   const inp=document.getElementById('pi-'+id);if(inp)o.propina=parseInt(inp.value)||0;
   if(o.propina>0 && !o.propinaPay) { toast('Indicá cómo se pagó la propina','r'); return; }
   o.status='cerrado';o.estadoPago='cobrado';o.expanded=false;
+  saveLocal(); 
   pushOrderCloseToCloud(o, 'closeOrder'); 
   animateClose(id);updateUI();toast('Guardado en Sheets ✓','g');
 }
@@ -1134,16 +1190,17 @@ function closeOrder(id){
 function cancelOrder(id){ confirm2('¿Cancelar pedido?','Irreversible.',()=>{ 
   const o=orders.find(x=>x.id===id);if(!o)return; 
   o.status='cancelado';o.expanded=false;
+  saveLocal(); 
   pushOrderCloseToCloud(o, 'cancelOrder');
   renderOrders();updateUI();toast('Cancelado','r'); 
 }); }
 
 /* ITEM ACTIONS (Ediciones menores en curso) */
-function cancelItem(oid,iid){const o=orders.find(x=>x.id===oid),item=o&&o.items.find(i=>i.id===iid);if(!item)return;item.status='cancelado';item.note='Sin stock'; pushOrderToCloud(o); renderOrders();}
+function cancelItem(oid,iid){const o=orders.find(x=>x.id===oid),item=o&&o.items.find(i=>i.id===iid);if(!item)return;item.status='cancelado';item.note='Sin stock'; saveLocal(); pushOrderToCloud(o); renderOrders();}
 function restItem(oid,iid){
   const o=orders.find(x=>x.id===oid),item=o&&o.items.find(i=>i.id===iid);if(!item)return;
   if(item.status==='reemplazado'&&item.originalName){ const origP=MENU_BASE.find(p=>p.name===item.originalName); if(origP){item.id=origP.id;item.name=origP.name;item.price=origP.price;item.e=origP.e;item.cat=origP.cat;} delete item.originalName;delete item.originalE; }
-  item.status='activo';item.note=''; pushOrderToCloud(o); renderOrders();
+  item.status='activo';item.note=''; saveLocal(); pushOrderToCloud(o); renderOrders();
 }
 
 /* ── MODALES DE ITEMS (REPLACE Y ADD) ── */
@@ -1198,6 +1255,7 @@ function doRep(newId){
   item.note='Cambio de: '+old;
   item.receta=newP.receta;
   item.presentacion=newP.presentacion;
+  saveLocal();
   pushOrderToCloud(o);
   renderOrders();
   toast(old+' → '+newP.name,'g');
@@ -1242,6 +1300,7 @@ function doAddProduct(pid){
       status:'activo', note:'Agregado a la orden', receta:p.receta, presentacion:p.presentacion
     });
   }
+  saveLocal(); 
   pushOrderToCloud(o); 
   renderOrders(); closeAddProduct();
   toast(p.name+' agregado', 'g');
@@ -1250,10 +1309,10 @@ function closeAddProduct(){document.getElementById('addOv').classList.remove('op
 
 
 /* PAY MODS */
-function setPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.payMethod=m; pushOrderToCloud(o); renderOrders();}}
-function setPPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.propinaPay=m; pushOrderToCloud(o); renderOrders();}}
-function setProp(oid,v){const o=orders.find(x=>x.id===oid);if(o){o.propina=parseInt(v)||0; pushOrderToCloud(o); if(o.propina>0||o.propina===0)renderOrders();}}
-function setPayNote(oid,txt){const o=orders.find(x=>x.id===oid);if(o){o.payNote=txt; pushOrderToCloud(o); }}
+function setPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.payMethod=m; saveLocal(); pushOrderToCloud(o); renderOrders();}}
+function setPPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.propinaPay=m; saveLocal(); pushOrderToCloud(o); renderOrders();}}
+function setProp(oid,v){const o=orders.find(x=>x.id===oid);if(o){o.propina=parseInt(v)||0; saveLocal(); pushOrderToCloud(o); if(o.propina>0||o.propina===0)renderOrders();}}
+function setPayNote(oid,txt){const o=orders.find(x=>x.id===oid);if(o){o.payNote=txt; saveLocal(); pushOrderToCloud(o); }}
 
 /* ══════════════════════════════════════
    HISTORIAL Y CIERRE
@@ -1265,7 +1324,7 @@ function renderPlan(){
     });
   });
   const el = document.getElementById('planContent');
-  if(el) el.innerHTML=ls.length?`<div style="overflow-x:auto"><table class="plan-table"><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Items</th><th>Total ítem</th><th>Pago</th><th>Propina</th><th>Prep.</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5">TOTAL — ${S.user}</td><td style="text-align:right">$${tv.toLocaleString('es-AR')}</td><td></td><td>$${tp.toLocaleString('es-AR')}</td><td></td></tr></tfoot></table></div>`:'<div class="noo">Sin ventas</div>';
+  if(el) el.innerHTML=ls.length?`<div style="overflow-x:auto"><table class="plan-table"><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Items</th><th>Total ítem</th><th>Pago</th><th>Propina</th><th>Prep.</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5" style="font-weight:900;">TOTAL TURNO (Compartido)</td><td style="text-align:right">$${tv.toLocaleString('es-AR')}</td><td></td><td>$${tp.toLocaleString('es-AR')}</td><td></td></tr></tfoot></table></div>`:'<div class="noo">Sin ventas en este turno</div>';
   renderPagoTotales(ls);
 }
 function renderPagoTotales(ls){
@@ -1301,12 +1360,12 @@ async function finalizarTurno(isAutoClose = false){
   
   if(inInsumos) inInsumos.value=''; if(inDesperdicio) inDesperdicio.value=''; if(inGeneral) inGeneral.value='';
   
-  if(isAutoClose) { clearSession(); location.reload(); return; } 
+  if(isAutoClose) { clearSession(); clearLocal(); location.reload(); return; } 
   
   if(btn){btn.disabled=false; btn.textContent="✓ Finalizar turno";}
   const sub = document.getElementById('endSub'); if(sub) sub.textContent=`${ls.length} ventas · $${tv.toLocaleString('es-AR')} · Sincronizado a Sheets`;
   const ov = document.getElementById('endOv'); if(ov) ov.classList.add('open');
-  clearSession(); 
+  clearSession(); clearLocal();
 }
 
 function closeEnd(){ const el = document.getElementById('endOv'); if(el) el.classList.remove('open'); location.reload();}
