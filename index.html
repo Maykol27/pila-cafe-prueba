@@ -602,13 +602,23 @@ let clockInterval = null;
 let pauseSync = 0; 
 
 /* ══════════════════════════════════════
-   UTILS FUNDAMENTALES
+   UTILS FUNDAMENTALES (BLINDAJE DE EXCEL)
 ══════════════════════════════════════ */
 function normalize(s){
   if (!s) return '';
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i')
     .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n');
+}
+
+// Limpia los títulos del Excel para que no importen los espacios ni mayúsculas
+function cleanObjKeys(obj) {
+  const res = {};
+  for(let k in obj) {
+    const cleanK = normalize(k).trim();
+    res[cleanK] = obj[k];
+  }
+  return res;
 }
 
 function pausePolling() { pauseSync = Date.now() + 6000; } 
@@ -698,38 +708,49 @@ async function backgroundSync(isInitial = false) {
     const res = await fetch(CONFIG.GAS_URL + '?t=' + Date.now()); 
     const data = await res.json();
     
-    // 1. Usuarios
     USERS_DB = {};
     let selectHtml = '<option value="">— elegir —</option>';
-    (data.usuarios||[]).forEach(u => {
-      USERS_DB[u.Nombre] = u.PIN; 
-      selectHtml += `<option value="${u.Nombre}">${u.Nombre}</option>`;
+    (data.usuarios||[]).forEach(raw => {
+      const u = cleanObjKeys(raw);
+      const nombre = u.nombre || u.nobre || u.usuario || '';
+      const pin = u.pin || u.clave || '';
+      if(nombre) {
+        USERS_DB[nombre] = pin; 
+        selectHtml += `<option value="${nombre}">${nombre}</option>`;
+      }
     });
     if (isInitial) document.getElementById('lUser').innerHTML = selectHtml;
 
-    // 2. Stock y Menú Fresco
     const disabled = data.disabledIDs || [];
-    MENU_BASE = (data.menu||[]).map(i => ({
-      id: parseInt(i.ID)||0, name: i.Nombre||'Sin nombre', desc: i.Descripcion||'',
-      price: parseInt(i.Precio)||0, cat: i.Categoria||'Varios', e: i.Emoji||'☕',
-      receta: i.Receta||'', presentacion: i.Presentacion||'', disponible: !disabled.includes(parseInt(i.ID)||0)
-    }));
+    MENU_BASE = (data.menu||[]).map(raw => {
+      const i = cleanObjKeys(raw);
+      return {
+        id: parseInt(i.id)||0, 
+        // Escudo: Acepta "nombre", "nobre", "producto", etc.
+        name: i.nombre || i.nobre || i.producto || i.item || 'Sin nombre',
+        desc: i.descripcion || i.detalle || '',
+        price: parseInt(i.precio)||0, 
+        cat: i.categoria || i.rubro || 'Varios', 
+        e: i.emoji || i.icono || '☕',
+        receta: i.receta || i.preparacion || '', 
+        presentacion: i.presentacion || i.vaso || '', 
+        disponible: !disabled.includes(parseInt(i.id)||0)
+      }
+    });
     MENU = [...MENU_BASE]; 
 
-    // 3. Pedidos Activos (Nube + Conservar Cerrados Locales)
+    // Reconciliación de pedidos Nube vs Local
     const remoteOrders = data.activeOrders || [];
     const closedOrders = orders.filter(o => o.status === 'cerrado' || o.status === 'cancelado'); 
     
     orders = remoteOrders.map(ro => {
       const lo = orders.find(o => o.id === ro.id);
-      // Escudo local: Si localmente ya lo cerramos, ignoramos si la nube viene atrasada
       if (lo && (lo.status === 'cerrado' || lo.status === 'cancelado') && (ro.status === 'curso' || ro.status === 'listo')) {
          return lo;
       }
       return { ...ro, expanded: lo ? lo.expanded : ro.expanded }; 
     });
     
-    // Reinyectar los cerrados que ya no están en la nube pero sí en este turno
     closedOrders.forEach(co => { if(!orders.find(o=>o.id===co.id)) orders.push(co); });
 
     orders.sort((a,b) => b.timestamp - a.timestamp); 
@@ -749,7 +770,7 @@ async function backgroundSync(isInitial = false) {
 window.onload = async () => {
   loadSession();
   loadCart();
-  const localStock = loadLocal(); // Restaura state si hay
+  const localStock = loadLocal(); 
 
   const loader = document.getElementById('menuLoader');
   if (!CONFIG.GAS_URL || CONFIG.GAS_URL === 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
@@ -844,6 +865,13 @@ function doLogout(){
 /* ══════════════════════════════════════
    STOCK / APP STATE
 ══════════════════════════════════════ */
+async function refetchMenu() {
+  toast('Sincronizando con Sheets...', 'y');
+  pauseSync = 0; // Fuerza que backgroundSync no salte la actualización
+  await backgroundSync();
+  toast('✓ Base actualizada', 'g');
+}
+
 function renderStockFaltantes(){
   const ag=MENU.filter(p=>!p.disponible), di=MENU.filter(p=>p.disponible);
   let html=`<div class="stock-summ-row">
@@ -1113,9 +1141,8 @@ function renderOrders(){
         let recHtml = '';
         if (o.expanded && (item.receta || item.presentacion)) {
             recHtml = `<div class="oi-receta">`;
-            if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}`;
-            if (item.receta && item.presentacion) recHtml += `<br><div style="height:6px"></div>`;
-            if (item.presentacion) recHtml += `<span style="font-weight:900; color:var(--terrac);">🍽️ Presentación:</span> ${item.presentacion}`;
+            if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}<br>`;
+            if (item.presentacion) recHtml += `<span style="font-weight:900;">🍽️ Presentación:</span> ${item.presentacion}`;
             recHtml += `</div>`;
         }
         
