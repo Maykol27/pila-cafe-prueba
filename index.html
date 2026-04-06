@@ -142,7 +142,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 /* ── SHEETS & OVERLAYS ── */
 .sheet-ov{position:fixed;inset:0;background:rgba(68,50,41,.45);z-index:100;opacity:0;pointer-events:none;transition:opacity .25s;}
 .sheet-ov.open{opacity:1;pointer-events:all;}
-.sheet{position:fixed;bottom:0;left:0;right:0;background:var(--bone);border-radius:22px 22px 0 0;padding:10px 17px 30px;max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);z-index:101;}
+.sheet{position:fixed;bottom:0;left:0;right:0;background:var(--bone);border-radius:22px 22px 0 0;padding:10px 17px 30px;max-height:85vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);z-index:101;}
 .sheet-ov.open .sheet{transform:translateY(0);}
 .sh-handle{width:36px;height:4px;background:var(--crema);border-radius:2px;margin:0 auto 13px;}
 .sh-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--marron);margin-bottom:13px;}
@@ -347,7 +347,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
       <div class="l-lbl">Turno</div>
       <select class="l-sel" id="lTurno">
         <option value="">— elegir —</option>
-        <option>Mañana</option><option>Tarde</option>
+        <option value="Mañana">Mañana</option><option value="Tarde">Tarde</option>
       </select>
       <div class="l-divider"></div>
       <div class="l-lbl">Código de 4 dígitos</div>
@@ -440,6 +440,19 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
       </div>
       
       <div id="payNowSection" style="display:none">
+        <!-- MODULO BONIFICACIONES -->
+        <div class="pay-lbl">Bonificación / Descuento</div>
+        <div style="display:flex; gap:5px; margin-bottom:12px;">
+           <select class="pinput" id="cartBonifTipo" style="flex:2; margin:0;" onchange="updateCartTotals()">
+             <option value="Ninguna">Ninguna</option><option value="Huésped">Huésped</option>
+             <option value="Promo">Promo</option><option value="Efectivo">Efectivo</option><option value="Otro">Otro</option>
+           </select>
+           <input class="pinput" type="number" id="cartBonifValor" placeholder="0" style="flex:1; margin:0;" oninput="updateCartTotals()">
+           <select class="pinput" id="cartBonifUnidad" style="flex:1; margin:0;" onchange="updateCartTotals()">
+             <option value="%">%</option><option value="$">$</option>
+           </select>
+        </div>
+
         <div class="pay-lbl">Método de pago</div>
         <div class="pmethods" id="cartPayMethods"></div>
         <input class="pinput" type="text" id="cartPayNote" placeholder="Nota del pago (ej. mitad efvo, mitad transf)">
@@ -452,7 +465,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
         </div>
       </div>
 
-      <button class="cbtn" onclick="submitOrder()">Enviar a cocina →</button>
+      <button class="cbtn" id="btnSubmitCart" onclick="submitOrder()">Enviar a cocina →</button>
     </div>
   </div>
 </div>
@@ -499,7 +512,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
     <div class="curso-grid" id="cursoGrid" style="display:none"></div>
     <div class="olist" id="olist" style="display:none"></div>
     <div id="planwrap" style="display:none" class="planwrap">
-      <div class="plan-title">Historial del turno compartido</div>
+      <div class="plan-title">Historial del turno (Compartido en la nube)</div>
       <div id="planContent"></div>
       <div class="pago-totales" id="pagoTotales"></div>
       <div class="extra-fields">
@@ -516,6 +529,13 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
           <textarea class="extra-area" id="obsGeneral" rows="2" placeholder="Incidentes, notas para el siguiente turno..."></textarea>
         </div>
       </div>
+
+      <!-- AVISO DE GASTOS -->
+      <div style="background:var(--azul-l); border:1px solid rgba(52,136,193,.2); border-radius:11px; padding:15px; margin-top:15px; text-align:center;">
+        <div style="font-size:14px; font-weight:900; color:var(--azul); margin-bottom:8px;">📋 No olvides registrar los gastos</div>
+        <a href="https://docs.google.com/spreadsheets/d/17Ug5yfQbERfzhB6gP9NNaGCzfEJH8XlKJ6pcBIMFsnA/edit?usp=drivesdk" target="_blank" style="display:inline-block; background:var(--azul); color:white; padding:10px 20px; border-radius:9px; font-size:13px; font-weight:900; text-decoration:none;">Abrir Formulario de Gastos</a>
+      </div>
+
       <button class="fin-btn" id="finBtn" onclick="finalizarTurno(false)">✓ Finalizar turno y sincronizar</button>
     </div>
   </div>
@@ -583,17 +603,18 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 ══════════════════════════════════════ */
 const CONFIG = {
   // 👇 PEGA AQUÍ LA NUEVA URL DE TU GOOGLE APPS SCRIPT 👇
-  GAS_URL: 'https://script.google.com/macros/s/AKfycby25FQdjHmkSdAweFV8kusWflaxYpV2_IsxTE24wPsv8VJYvN04Mxvwr5h34oyq1aqrXw/exec'
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbwfobuTa5qke8YrUhaj5TMN2xSl14Yvu70RuiixtdCLqQsmGtFlejDkA4TJ90EXsCvQcw/exec'
 };
 
 /* Variables globales y estado */
 let MENU_BASE = [], MENU = [], USERS_DB = {}; 
 const PAYS  = [{k:'Efectivo',i:'💵'},{k:'Tarjetas',i:'💳'},{k:'Transfer.',i:'📲'},{k:'QR',i:'📱'},{k:'Cons. personal',i:'👤'}];
 const PPAYS = [{k:'Efectivo',i:'💵'},{k:'Transfer.',i:'📲'},{k:'QR',i:'📱'}];
+const MAX_TURN_HOURS = 10; 
 
 let acat='Todos', sq='', cart={}, cartNotes={};
 let orders=[], seq=0, mf='curso', repCtx=null, confCb=null;
-let S={user:'',turno:'',fecha:''};
+let S={user:'',turno:'',fecha:'', ts: 0};
 let lpCtx=null, lpTimer=null;
 let loginPinBuf='', loginPinTries=0;
 let cartPagaAhora=null, cartPayMethod='', cartPropMethod='';
@@ -611,7 +632,6 @@ function normalize(s){
     .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n');
 }
 
-// Limpia los títulos del Excel para que no importen los espacios ni mayúsculas
 function cleanObjKeys(obj) {
   const res = {};
   for(let k in obj) {
@@ -624,10 +644,23 @@ function cleanObjKeys(obj) {
 function pausePolling() { pauseSync = Date.now() + 6000; } 
 
 /* ══════════════════════════════════════
+   MATE: CÁLCULOS Y BONIFICACIONES
+══════════════════════════════════════ */
+function calcSubtotal(o){ return o.items.filter(i=>i.status!=='cancelado').reduce((s,i)=>s+i.price*i.qty,0); }
+function calcDiscount(o){
+  if(!o.bonifType || o.bonifType === 'Ninguna') return 0;
+  let sub = calcSubtotal(o);
+  let val = parseFloat(o.bonifVal) || 0;
+  if(o.bonifUnit === '%') return sub * (val / 100);
+  return val;
+}
+function calcTotal(o){ return Math.max(0, calcSubtotal(o) - calcDiscount(o)); }
+
+/* ══════════════════════════════════════
    LOCAL STORAGE 
 ══════════════════════════════════════ */
 function saveSession() { try { localStorage.setItem('pila_session', JSON.stringify({S, seq})); } catch(e) {} }
-function loadSession() { try { const d = localStorage.getItem('pila_session'); if(d) { const j = JSON.parse(d); S=j.S||{user:'',turno:'',fecha:''}; seq=j.seq||0; } } catch(e){} }
+function loadSession() { try { const d = localStorage.getItem('pila_session'); if(d) { const j = JSON.parse(d); S=j.S||{user:'',turno:'',fecha:'', ts: 0}; seq=j.seq||0; } } catch(e){} }
 function saveCart() { try { localStorage.setItem('pila_cart', JSON.stringify({cart, cartNotes})); } catch(e) {} }
 function loadCart() { try { const d = localStorage.getItem('pila_cart'); if(d){ const j=JSON.parse(d); cart=j.cart||{}; cartNotes=j.cartNotes||{}; } } catch(e){} }
 function clearSession() { try { localStorage.removeItem('pila_session'); localStorage.removeItem('pila_cart'); } catch(e){} }
@@ -642,7 +675,7 @@ function loadLocal() {
     const data = localStorage.getItem('pila_state');
     if(data){
       const p = JSON.parse(data);
-      S=p.S||{user:'',turno:'',fecha:''}; cart=p.cart||{}; cartNotes=p.cartNotes||{}; orders=p.orders||[]; seq=p.seq||0;
+      S=p.S||{user:'',turno:'',fecha:'', ts:0}; cart=p.cart||{}; cartNotes=p.cartNotes||{}; orders=p.orders||[]; seq=p.seq||0;
       return p.menuStock;
     }
   } catch(e) { console.error('Error cargando memoria', e); }
@@ -703,6 +736,16 @@ async function backgroundSync(isInitial = false) {
   if (isSyncing || !CONFIG.GAS_URL || CONFIG.GAS_URL === 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') return;
   if (!isInitial && Date.now() < pauseSync) return; 
   
+  // VERIFICAR CADUCIDAD DE TURNO (10 HORAS)
+  if (!isInitial && S && S.ts && S.user) {
+    const horasPasadas = (Date.now() - S.ts) / (1000 * 60 * 60);
+    if (horasPasadas >= MAX_TURN_HOURS) {
+      console.log("Turno expirado (10 horas). Cerrando...");
+      await finalizarTurno(true, "Cierre Automático: El turno superó las 10 horas y fue cerrado por seguridad.");
+      return; 
+    }
+  }
+
   isSyncing = true;
   try {
     const res = await fetch(CONFIG.GAS_URL + '?t=' + Date.now()); 
@@ -726,7 +769,6 @@ async function backgroundSync(isInitial = false) {
       const i = cleanObjKeys(raw);
       return {
         id: parseInt(i.id)||0, 
-        // Escudo: Acepta "nombre", "nobre", "producto", etc.
         name: i.nombre || i.nobre || i.producto || i.item || 'Sin nombre',
         desc: i.descripcion || i.detalle || '',
         price: parseInt(i.precio)||0, 
@@ -739,7 +781,6 @@ async function backgroundSync(isInitial = false) {
     });
     MENU = [...MENU_BASE]; 
 
-    // Reconciliación de pedidos Nube vs Local
     const remoteOrders = data.activeOrders || [];
     const closedOrders = orders.filter(o => o.status === 'cerrado' || o.status === 'cancelado'); 
     
@@ -828,7 +869,7 @@ async function doLogin(){
     return;
   }
   
-  S={user:u,turno:t,fecha:new Date().toLocaleDateString('es-AR')};
+  S={user:u, turno:t, fecha:new Date().toLocaleDateString('es-AR'), ts: Date.now()};
   
   if (orders.length === 0 && Object.keys(cart).length === 0) {
     MENU=MENU.map(p=>({...p,disponible:true}));
@@ -863,11 +904,11 @@ function doLogout(){
 }
 
 /* ══════════════════════════════════════
-   STOCK / APP STATE
+   STOCK / APP STATE (CON ENVÍO UNIFICADO)
 ══════════════════════════════════════ */
 async function refetchMenu() {
   toast('Sincronizando con Sheets...', 'y');
-  pauseSync = 0; // Fuerza que backgroundSync no salte la actualización
+  pauseSync = 0; 
   await backgroundSync();
   toast('✓ Base actualizada', 'g');
 }
@@ -895,7 +936,6 @@ function toggleStock(id){
     p.disponible=!p.disponible; 
     saveLocal();
     renderStockFaltantes();
-    syncStockToCloud();
   } 
 }
 
@@ -908,29 +948,25 @@ function syncStockToCloud() {
 function closeStock(){
   try {
     const faltantes = MENU.filter(p=>!p.disponible).map(p=>p.name).join(', ');
-    if(faltantes && CONFIG.GAS_URL && CONFIG.GAS_URL !== 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
+    const disabledIDs = MENU.filter(p=>!p.disponible).map(p=>p.id);
+    
+    if(CONFIG.GAS_URL && CONFIG.GAS_URL !== 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
       fetch(CONFIG.GAS_URL, { 
         method:'POST', 
-        body:JSON.stringify({action:'stockReport', faltantesNombres: faltantes, turno: S.turno || '', fecha: S.fecha || ''}),
+        body:JSON.stringify({action:'updateStockAndFaltantes', disabledIDs, faltantesNombres: faltantes, turno: S.turno || '', fecha: S.fecha || '', encargado: S.user || ''}),
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
       }).catch(e => console.log('Envío background:', e));
     }
-  } catch(e) {
-    console.error('Error enviando reporte de faltantes:', e);
-  }
+  } catch(e) {}
 
-  try {
-    hide('scStock'); 
-    const el = document.getElementById('scStock');
-    if(el) el.classList.remove('active');
-    
-    renderCats();
-    renderProds();
-    renderAgotadosBanner();
-    updateUI();
-  } catch(e) {
-    console.error('Error renderizando vistas:', e);
-  }
+  hide('scStock'); 
+  const el = document.getElementById('scStock');
+  if(el) el.classList.remove('active');
+  
+  renderCats();
+  renderProds();
+  renderAgotadosBanner();
+  updateUI();
 
   show('scOrder'); 
 }
@@ -1022,6 +1058,12 @@ function openCart(){
   document.getElementById('btnPagaAhora').style.background='var(--crema2)'; document.getElementById('btnPagaAhora').style.color='var(--marron3)'; document.getElementById('btnPagaAhora').style.borderColor='var(--crema)';
   document.getElementById('btnPagaDespues').style.background='var(--crema2)'; document.getElementById('btnPagaDespues').style.color='var(--marron3)'; document.getElementById('btnPagaDespues').style.borderColor='var(--crema)';
   document.getElementById('payNowSection').style.display='none';
+  
+  // Reset Bonif
+  document.getElementById('cartBonifTipo').value = 'Ninguna';
+  document.getElementById('cartBonifValor').value = '';
+  document.getElementById('cartBonifUnidad').value = '%';
+
   document.getElementById('cartPayMethods').innerHTML=PAYS.map(p=>`<div class="popt" id="cpm-${p.k.replace(/[^a-z]/gi,'_')}" onclick="selectCartPay('${p.k}')"><span class="popt-icon">${p.i}</span><div class="popt-name">${p.k}</div></div>`).join('');
   document.getElementById('cartPropMethods').innerHTML=PPAYS.map(p=>`<div class="ppopt" id="cppm-${p.k.replace(/[^a-z]/gi,'_')}" onclick="selectCartPropPay('${p.k}')"><span class="ppopt-icon">${p.i}</span><div class="ppopt-name">${p.k}</div></div>`).join('');
   document.getElementById('cartPayNote').value='';
@@ -1041,10 +1083,29 @@ function setPagaAhora(val){
     si.style.background='var(--crema2)';si.style.color='var(--marron3)';si.style.borderColor='var(--crema)';
     document.getElementById('payNowSection').style.display='none';
   }
+  updateCartTotals();
 }
 function selectCartPay(m){ cartPayMethod=m; document.querySelectorAll('#cartPayMethods .popt').forEach(e=>e.classList.remove('sel')); const el=document.getElementById('cpm-'+m.replace(/[^a-z]/gi,'_')); if(el)el.classList.add('sel'); }
 function selectCartPropPay(m){ cartPropMethod=m; document.querySelectorAll('#cartPropMethods .ppopt').forEach(e=>e.classList.remove('sel')); const el=document.getElementById('cppm-'+m.replace(/[^a-z]/gi,'_')); if(el)el.classList.add('sel'); }
 function updateCartPropUI(){ const v=parseInt(document.getElementById('cartPropina').value)||0; document.getElementById('cartPropPaySection').style.display=v>0?'block':'none'; }
+
+function updateCartTotals() {
+  const btn = document.getElementById('btnSubmitCart');
+  if(!cartPagaAhora) { btn.textContent = 'Enviar a cocina →'; return; }
+  
+  const sub = Object.keys(cart).reduce((acc, id) => { const p=MENU.find(x=>x.id==id); return acc + (p?p.price*cart[id]:0); }, 0);
+  const bTipo = document.getElementById('cartBonifTipo').value;
+  const bVal = parseFloat(document.getElementById('cartBonifValor').value) || 0;
+  const bUni = document.getElementById('cartBonifUnidad').value;
+  
+  let desc = 0;
+  if(bTipo !== 'Ninguna') {
+    desc = bUni === '%' ? sub * (bVal/100) : bVal;
+  }
+  const total = Math.max(0, sub - desc);
+  btn.textContent = `Cobrar $${total.toLocaleString('es-AR')} y Enviar →`;
+}
+
 function renderCart(){
   const el=document.getElementById('citems'), keys=Object.keys(cart);
   if(!el) return;
@@ -1053,6 +1114,7 @@ function renderCart(){
     const p=MENU.find(x=>x.id==id),qty=cart[id],note=cartNotes[id]?`<div style="font-size:10px;color:var(--marron3);padding:1px 0 4px 23px;font-style:italic">↳ ${cartNotes[id]}</div>`:'';
     return `<div class="ci"><span class="ci-emo">${p.e}</span><span style="flex:1;font-size:13px;font-weight:700">${p.name}</span><div class="qc"><button class="qb" onclick="chgQty(${id},-1)">−</button><span class="qn">${qty}</span><button class="qb" onclick="chgQty(${id},+1)">+</button></div><span class="ci-price">$${(p.price*qty).toLocaleString('es-AR')}</span></div>${note}`;
   }).join('');
+  updateCartTotals();
 }
 
 /* ================== ENVÍO CLOUD DE ÓRDENES ================== */
@@ -1077,6 +1139,10 @@ function submitOrder(){
   const prop = parseInt(document.getElementById('cartPropina').value)||0;
   if(prop > 0 && !cartPropMethod && cartPagaAhora) { toast('Elegí vía de propina','r'); return; }
 
+  const bTipo = cartPagaAhora ? document.getElementById('cartBonifTipo').value : 'Ninguna';
+  const bVal = cartPagaAhora ? (parseFloat(document.getElementById('cartBonifValor').value) || 0) : 0;
+  const bUni = cartPagaAhora ? document.getElementById('cartBonifUnidad').value : '%';
+
   seq++; saveSession(); 
 
   const items=keys.map(id=>{const p=MENU.find(x=>x.id==id);return{id:p.id,name:p.name,qty:cart[id],price:p.price,e:p.e,cat:p.cat,status:'activo',note:cartNotes[id]||'',receta:p.receta,presentacion:p.presentacion};});
@@ -1087,9 +1153,12 @@ function submitOrder(){
     encargado:S.user, turno:S.turno, items, status:'curso',
     pagaAhora:cartPagaAhora, payMethod:cartPagaAhora?cartPayMethod:'', payNote: cartPagaAhora?document.getElementById('cartPayNote').value.trim():'',
     estadoPago:cartPagaAhora?'cobrado_antes':'pendiente',
-    propina:cartPagaAhora?prop:0, propinaPay:cartPagaAhora?cartPropMethod:'', expanded:true, tiempoEntrega:null
+    propina:cartPagaAhora?prop:0, propinaPay:cartPagaAhora?cartPropMethod:'', expanded:true, tiempoEntrega:null,
+    bonifType: bTipo, bonifVal: bVal, bonifUnit: bUni, descuentoAplicado: 0 
   };
   
+  if(cartPagaAhora) order.descuentoAplicado = calcDiscount(order);
+
   orders.unshift(order); 
   cart={}; cartNotes={}; saveCart(); 
   document.getElementById('cname').value=''; 
@@ -1101,7 +1170,6 @@ function submitOrder(){
 /* ══════════════════════════════════════
    ORDERS & KITCHEN TIMERS
 ══════════════════════════════════════ */
-function calcTotal(o){return o.items.filter(i=>i.status!=='cancelado').reduce((s,i)=>s+i.price*i.qty,0);}
 function setF(el,f){ document.querySelectorAll('.mf').forEach(e=>e.classList.remove('on')); el.classList.add('on');mf=f;renderOrders(); }
 function renderStats(){
   const curso=orders.filter(o=>o.status==='curso').length, listo=orders.filter(o=>o.status==='listo').length, precob=orders.filter(o=>o.status==='curso'&&o.estadoPago==='cobrado_antes').length, cob=orders.filter(o=>o.status==='cerrado').reduce((s,o)=>s+calcTotal(o),0);
@@ -1142,7 +1210,7 @@ function renderOrders(){
         if (o.expanded && (item.receta || item.presentacion)) {
             recHtml = `<div class="oi-receta">`;
             if (item.receta) recHtml += `<span style="font-weight:900;">📖 Receta:</span> ${item.receta}<br>`;
-            if (item.presentacion) recHtml += `<span style="font-weight:900;">🍽️ Presentación:</span> ${item.presentacion}`;
+            if (item.presentacion) recHtml += `<span style="font-weight:900; color:var(--terrac);">🍽️ Presentación:</span> ${item.presentacion}`;
             recHtml += `</div>`;
         }
         
@@ -1166,7 +1234,11 @@ function renderOrders(){
   }
 }
 function buildListoCard(o){
-  const at=calcTotal(o), itemsHtml=o.items.map(item=>{
+  const subTotal = calcSubtotal(o);
+  const discount = calcDiscount(o);
+  const at = Math.max(0, subTotal - discount);
+
+  const itemsHtml=o.items.map(item=>{
     const isC=item.status==='cancelado',isR=item.status==='reemplazado', bdg=isC?'<span class="ibdg bc">Sin stock</span>':isR?'<span class="ibdg" style="background:var(--azul-l);color:var(--azul)">Cambio</span>':'', pr=isC?'<span class="oiprice" style="color:var(--marron3)">—</span>':`<span class="oiprice">$${(item.price*item.qty).toLocaleString('es-AR')}</span>`;
     let ac=''; if(!isC&&!isR)ac=`<div class="iac"><button class="ibtn ir" onclick="event.stopPropagation();openRep(${o.id},${item.id})">⇄</button><button class="ibtn ic" onclick="event.stopPropagation();cancelItem(${o.id},${item.id})">✕</button></div>`; else if(isC||isR)ac=`<div class="iac"><button class="ibtn ix" onclick="event.stopPropagation();restItem(${o.id},${item.id})">↩</button></div>`;
     const nt=item.note?`<div class="oinote">↳ ${item.note}</div>`:''; return `<div class="oi${isC?' xc':''}${isR?' xr':''}"><span class="oiemo">${item.e}</span><span class="oiname">${item.name}</span><span class="oiqty">x${item.qty}</span>${bdg}${pr}${ac}</div>${nt}`;
@@ -1175,15 +1247,47 @@ function buildListoCard(o){
   const ppbs=PPAYS.map(p=>`<div class="ppopt${o.propinaPay===p.k?' sel':''}" onclick="setPPay(${o.id},'${p.k}')"><span class="ppopt-icon">${p.i}</span><div class="ppopt-name">${p.k}</div></div>`).join('');
   let addBtn = `<button onclick="openAddProduct(${o.id})" style="width:100%;background:transparent;border:2px dashed rgba(138,114,104,0.4);color:var(--marron2);padding:10px;border-radius:11px;font-family:'Nunito',sans-serif;font-weight:900;font-size:13px;margin-top:6px;margin-bottom:14px;cursor:pointer;">+ Añadir producto</button>`;
 
+  const bTipo = o.bonifType || 'Ninguna';
+  const bVal = o.bonifVal || '';
+  const bUni = o.bonifUnit || '%';
+
+  let mathLine = '';
+  if (discount > 0) {
+     mathLine = `<div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:14px; font-weight:700;"><span>Subtotal:</span><span>$${subTotal.toLocaleString('es-AR')}</span></div>
+                 <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:14px; font-weight:700; color:var(--terrac);"><span>Descuento:</span><span>-$${discount.toLocaleString('es-AR')}</span></div>`;
+  }
+
   const body=`<div style="padding-bottom:12px">
     ${addBtn}
+
+    <div class="pay-lbl">Bonificación / Descuento</div>
+    <div style="display:flex; gap:5px; margin-bottom:12px;">
+       <select class="pinput" style="flex:2; margin:0;" onchange="setBonif(${o.id}, 'tipo', this.value)">
+         <option value="Ninguna" ${bTipo==='Ninguna'?'selected':''}>Ninguna</option>
+         <option value="Huésped" ${bTipo==='Huésped'?'selected':''}>Huésped</option>
+         <option value="Promo" ${bTipo==='Promo'?'selected':''}>Promo</option>
+         <option value="Efectivo" ${bTipo==='Efectivo'?'selected':''}>Efectivo</option>
+         <option value="Otro" ${bTipo==='Otro'?'selected':''}>Otro</option>
+       </select>
+       <input class="pinput" type="number" placeholder="0" style="flex:1; margin:0;" value="${bVal}" oninput="setBonif(${o.id}, 'valor', this.value)">
+       <select class="pinput" style="flex:1; margin:0;" onchange="setBonif(${o.id}, 'unidad', this.value)">
+         <option value="%" ${bUni==='%'?'selected':''}>%</option>
+         <option value="$" ${bUni==='$'?'selected':''}>$</option>
+       </select>
+    </div>
+
     <div class="pay-lbl">Método de pago</div><div class="pmethods">${pbs}</div>
     <input class="pinput" type="text" id="payNote-${o.id}" placeholder="Nota del pago (opcional)" value="${o.payNote||''}" oninput="setPayNote(${o.id},this.value)">
+    
     <div class="pay-lbl">Propina (opcional manual)</div><input class="pinput" type="number" inputmode="numeric" placeholder="$0" id="pi-${o.id}" value="${o.propina||''}" oninput="setProp(${o.id},this.value)">
     ${o.propina>0?`<div class="pay-lbl">¿Cómo llegó la propina?</div><div class="ppmethods">${ppbs}</div>`:''}
+    
+    ${mathLine}
     <button class="closebtn" ${o.payMethod?'':'disabled'} onclick="closeOrder(${o.id})">✓ Confirmar cobro — $${at.toLocaleString('es-AR')}</button><button class="xcbtn" onclick="cancelOrder(${o.id})">Cancelar pedido</button></div>`;
+  
   return `<div class="oc s-listo${o.expanded?' expanded':''}" id="oc-${o.id}"><div class="och" onclick="togOrder(${o.id})"><div class="ocnum">#${o.seq}</div><div class="ocinfo"><div class="ocname">${o.name}</div><div class="ocmeta">${o.hora} · ${o.encargado}</div></div><div class="octotal">$${at.toLocaleString('es-AR')}</div><span class="sbadge sb-listo">A cobrar</span></div><div class="ocb"><div class="ocitems">${itemsHtml}</div>${body}</div></div>`;
 }
+
 function togOrder(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;saveLocal();renderOrders();}}
 function toggleCursoCard(id){const o=orders.find(x=>x.id===id);if(o){o.expanded=!o.expanded;saveLocal();renderOrders();}}
 function animateClose(id){const c=document.getElementById('oc-'+id); if(c){c.classList.add('sliding-out');setTimeout(()=>renderOrders(),360);}else renderOrders(); }
@@ -1208,7 +1312,10 @@ function closeOrder(id){
   const o=orders.find(x=>x.id===id);if(!o||!o.payMethod)return;
   const inp=document.getElementById('pi-'+id);if(inp)o.propina=parseInt(inp.value)||0;
   if(o.propina>0 && !o.propinaPay) { toast('Indicá cómo se pagó la propina','r'); return; }
+  
+  o.descuentoAplicado = calcDiscount(o); 
   o.status='cerrado';o.estadoPago='cobrado';o.expanded=false;
+  
   saveLocal(); 
   pushOrderCloseToCloud(o, 'closeOrder'); 
   animateClose(id);updateUI();toast('Guardado en Sheets ✓','g');
@@ -1336,6 +1443,15 @@ function closeAddProduct(){document.getElementById('addOv').classList.remove('op
 
 
 /* PAY MODS */
+function setBonif(oid, field, val) {
+  const o = orders.find(x => x.id === oid);
+  if(o) {
+    if(field === 'tipo') o.bonifType = val;
+    if(field === 'valor') o.bonifVal = parseFloat(val) || 0;
+    if(field === 'unidad') o.bonifUnit = val;
+    saveLocal(); renderOrders(); pushOrderToCloud(o);
+  }
+}
 function setPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.payMethod=m; saveLocal(); pushOrderToCloud(o); renderOrders();}}
 function setPPay(oid,m){const o=orders.find(x=>x.id===oid);if(o){o.propinaPay=m; saveLocal(); pushOrderToCloud(o); renderOrders();}}
 function setProp(oid,v){const o=orders.find(x=>x.id===oid);if(o){o.propina=parseInt(v)||0; saveLocal(); pushOrderToCloud(o); if(o.propina>0||o.propina===0)renderOrders();}}
@@ -1345,6 +1461,7 @@ function setPayNote(oid,txt){const o=orders.find(x=>x.id===oid);if(o){o.payNote=
    HISTORIAL Y CIERRE
 ══════════════════════════════════════ */
 function renderPlan(){
+  // Omite cancelados en el cálculo total
   const ls=orders.filter(o=>o.status==='cerrado'); let rows='',tv=0,tp=0;
   ls.forEach(o=>{ const t=calcTotal(o);tv+=t;tp+=o.propina||0; o.items.filter(i=>i.status!=='cancelado').forEach((item,idx)=>{
       rows+=`<tr><td>${idx===0?'#'+o.seq:''}</td><td>${idx===0?o.fecha:''}</td><td>${idx===0?o.hora:''}</td><td>${idx===0?o.name:''}</td><td>${item.e} ${item.name}</td><td style="text-align:right">$${(item.price*item.qty).toLocaleString('es-AR')}</td><td>${idx===0?o.payMethod:''}</td><td>${idx===0&&o.propina?'$'+o.propina.toLocaleString('es-AR'):''}</td><td>${idx===0?(o.tiempoEntrega?o.tiempoEntrega+'m':'-'):''}</td></tr>`;
@@ -1364,7 +1481,7 @@ function renderPagoTotales(ls){
   if(el) el.innerHTML=ls.length?html:'';
 }
 
-async function finalizarTurno(isAutoClose = false){
+async function finalizarTurno(isAutoClose = false, msgOverride = null){
   const ls=orders.filter(o=>o.status==='cerrado');
   
   const inInsumos = document.getElementById('obsInsumos');
@@ -1375,11 +1492,33 @@ async function finalizarTurno(isAutoClose = false){
   const obsDesperdicio= inDesperdicio ? inDesperdicio.value.trim() : '';
   const obsGeneral= inGeneral ? inGeneral.value.trim() : '';
   
-  let tv=0,tp=0; const byPago = { 'Efectivo':0, 'Tarjetas':0, 'Transfer.':0, 'QR':0, 'Cons. personal':0 };
-  ls.forEach(o=>{ const t = calcTotal(o); tv+=t; tp+=o.propina||0; const k=o.payMethod||'Sin definir'; if(byPago[k]!==undefined)byPago[k]+=t; });
+  let subtotal = 0; let totalDesc = 0; let totalNeto = 0; let tp = 0; 
+  const byPago = { 'Efectivo':0, 'Tarjetas':0, 'Transfer.':0, 'QR':0, 'Cons. personal':0 };
+  
+  ls.forEach(o=>{ 
+    const sub = calcSubtotal(o);
+    const desc = calcDiscount(o);
+    const net = calcTotal(o);
+    
+    subtotal += sub;
+    totalDesc += desc;
+    totalNeto += net;
+    tp += o.propina||0; 
+    
+    const k = o.payMethod||'Sin definir'; 
+    if(byPago[k] !== undefined) byPago[k] += net; 
+  });
 
-  const cierreData = { fecha: S.fecha, hora: new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}), encargado: S.user, turno: S.turno, totalVentas: tv, totalPropinas: tp, pagos: byPago, insumos: obsInsumos, desperdicio: obsDesperdicio, obs: isAutoClose ? '(Cierre por deslogueo) ' + obsGeneral : obsGeneral };
-  const btn = document.getElementById('finBtn'); if(btn){btn.disabled=true; btn.textContent="Sincronizando...";}
+  const finalObs = msgOverride ? msgOverride : obsGeneral;
+
+  const cierreData = { 
+    fecha: S.fecha, hora: new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}), 
+    encargado: S.user, turno: S.turno, 
+    totalBruto: subtotal, totalDescuentos: totalDesc, totalVentasNeto: totalNeto, totalPropinas: tp, 
+    pagos: byPago, insumos: obsInsumos, desperdicio: obsDesperdicio, obs: finalObs
+  };
+  
+  const btn = document.getElementById('finBtn'); if(btn && !isAutoClose){btn.disabled=true; btn.textContent="Sincronizando...";}
 
   if(CONFIG.GAS_URL && CONFIG.GAS_URL !== 'TU_URL_DE_GOOGLE_APPS_SCRIPT_AQUI') {
     try { await fetch(CONFIG.GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'closeShift', cierre: cierreData }), headers: { 'Content-Type': 'text/plain;charset=utf-8' } }); } catch(e) {}
@@ -1387,10 +1526,15 @@ async function finalizarTurno(isAutoClose = false){
   
   if(inInsumos) inInsumos.value=''; if(inDesperdicio) inDesperdicio.value=''; if(inGeneral) inGeneral.value='';
   
-  if(isAutoClose) { clearSession(); clearLocal(); location.reload(); return; } 
+  if(isAutoClose) { 
+    clearSession(); clearLocal(); 
+    alert(msgOverride || "Turno cerrado de forma automática.");
+    location.reload(); 
+    return; 
+  } 
   
-  if(btn){btn.disabled=false; btn.textContent="✓ Finalizar turno";}
-  const sub = document.getElementById('endSub'); if(sub) sub.textContent=`${ls.length} ventas · $${tv.toLocaleString('es-AR')} · Sincronizado a Sheets`;
+  if(btn){btn.disabled=false; btn.textContent="✓ Finalizar turno y sincronizar";}
+  const subEl = document.getElementById('endSub'); if(subEl) subEl.textContent=`${ls.length} ventas · $${totalNeto.toLocaleString('es-AR')} · Sincronizado a Sheets`;
   const ov = document.getElementById('endOv'); if(ov) ov.classList.add('open');
   clearSession(); clearLocal();
 }
