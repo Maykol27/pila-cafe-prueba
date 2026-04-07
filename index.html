@@ -264,13 +264,13 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 .ibtn.ix{border-color:var(--verde);color:var(--verde);}
 .oinote{font-size:14px;color:var(--marron3);padding:2px 0 8px 32px;font-style:italic;width:100%;}
 
-/* ── HISTORIAL ── */
+/* ── HISTORIAL DE TURNO REDISEÑADO ── */
 .planwrap{padding:11px 13px 30px;}
 .plan-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--marron3);font-weight:700;margin-bottom:8px;}
-.plan-table{width:100%;border-collapse:collapse;font-size:10px;}
-.plan-table th{font-size:8px;letter-spacing:.4px;text-transform:uppercase;color:var(--marron3);padding:4px 5px;text-align:left;border-bottom:1.5px solid var(--crema);font-weight:700;}
-.plan-table td{padding:5px 5px;border-bottom:1px solid var(--crema2);color:var(--marron);vertical-align:top;}
-.plan-table tfoot td{font-weight:900;color:var(--amar2);border-top:1.5px solid var(--crema);padding-top:7px;}
+.plan-table{width:100%;border-collapse:collapse;font-size:11px;background:white;border-radius:8px;overflow:hidden;}
+.plan-table th{font-size:9px;letter-spacing:.4px;text-transform:uppercase;color:var(--marron3);padding:8px;text-align:left;border-bottom:2px solid var(--crema);font-weight:900;background:var(--crema2);}
+.plan-table td{padding:8px 6px;border-bottom:1px solid var(--crema2);color:var(--marron);vertical-align:middle;}
+.plan-table tfoot td{font-weight:900;color:var(--amar2);border-top:2px solid var(--crema);padding-top:10px;}
 .pago-totales{background:var(--crema2);border-radius:11px;padding:11px 13px;margin:12px 0;}
 .pago-totales-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--marron3);font-weight:700;margin-bottom:8px;}
 .pago-total-row2{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--crema);}
@@ -512,7 +512,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
     <div class="curso-grid" id="cursoGrid" style="display:none"></div>
     <div class="olist" id="olist" style="display:none"></div>
     <div id="planwrap" style="display:none" class="planwrap">
-      <div class="plan-title">Historial del turno (Compartido en la nube)</div>
+      <div class="plan-title">Historial del turno compartido</div>
       <div id="planContent"></div>
       <div class="pago-totales" id="pagoTotales"></div>
       <div class="extra-fields">
@@ -603,7 +603,7 @@ body{background:var(--crema);font-family:'Nunito',sans-serif;color:var(--marron)
 ══════════════════════════════════════ */
 const CONFIG = {
   // 👇 PEGA AQUÍ LA NUEVA URL DE TU GOOGLE APPS SCRIPT 👇
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbwfobuTa5qke8YrUhaj5TMN2xSl14Yvu70RuiixtdCLqQsmGtFlejDkA4TJ90EXsCvQcw/exec'
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbx_4hACUB4_jLZHCPz3UvUpQX5MHKreK6YiKGdhLDf5C3PqV9K7wHJUT7kFL28PgY56qQ/exec'
 };
 
 /* Variables globales y estado */
@@ -895,8 +895,11 @@ function doLogout(){
     closedCount > 0 ? 'Hay ventas cerradas. Si salís ahora se finalizará el turno automáticamente.' : 'Se cerrará tu sesión actual.', 
     () => {
       if(closedCount > 0) {
-        finalizarTurno(true); 
+        finalizarTurno(true, "Cierre al desloguear."); 
       } else {
+        clearInterval(clockInterval); // MATAR RELOJ
+        isSyncing = true; // BLOQUEAR NUBE
+        S = null; orders = [];
         clearSession(); clearLocal();
         location.reload(); 
       }
@@ -937,12 +940,6 @@ function toggleStock(id){
     saveLocal();
     renderStockFaltantes();
   } 
-}
-
-function syncStockToCloud() {
-  pausePolling();
-  const disabledIDs = MENU.filter(p=>!p.disponible).map(p=>p.id);
-  fetch(CONFIG.GAS_URL, { method:'POST', body:JSON.stringify({action:'updateStock', disabledIDs}) });
 }
 
 function closeStock(){
@@ -1458,17 +1455,42 @@ function setProp(oid,v){const o=orders.find(x=>x.id===oid);if(o){o.propina=parse
 function setPayNote(oid,txt){const o=orders.find(x=>x.id===oid);if(o){o.payNote=txt; saveLocal(); pushOrderToCloud(o); }}
 
 /* ══════════════════════════════════════
-   HISTORIAL Y CIERRE
+   HISTORIAL Y CIERRE (REDISEÑADO)
 ══════════════════════════════════════ */
 function renderPlan(){
-  // Omite cancelados en el cálculo total
   const ls=orders.filter(o=>o.status==='cerrado'); let rows='',tv=0,tp=0;
-  ls.forEach(o=>{ const t=calcTotal(o);tv+=t;tp+=o.propina||0; o.items.filter(i=>i.status!=='cancelado').forEach((item,idx)=>{
-      rows+=`<tr><td>${idx===0?'#'+o.seq:''}</td><td>${idx===0?o.fecha:''}</td><td>${idx===0?o.hora:''}</td><td>${idx===0?o.name:''}</td><td>${item.e} ${item.name}</td><td style="text-align:right">$${(item.price*item.qty).toLocaleString('es-AR')}</td><td>${idx===0?o.payMethod:''}</td><td>${idx===0&&o.propina?'$'+o.propina.toLocaleString('es-AR'):''}</td><td>${idx===0?(o.tiempoEntrega?o.tiempoEntrega+'m':'-'):''}</td></tr>`;
+  ls.forEach(o=>{ 
+    const neto = calcTotal(o);
+    const bruto = calcSubtotal(o);
+    const desc = calcDiscount(o) || o.descuentoAplicado || 0;
+    tv+=neto; tp+=o.propina||0; 
+    
+    const activeItems = o.items.filter(i=>i.status!=='cancelado');
+    const rspan = activeItems.length || 1;
+
+    if (activeItems.length === 0) return;
+
+    activeItems.forEach((item,idx)=>{
+      if (idx === 0) {
+        const bonifLabel = desc > 0 ? `<br><small style="font-size:8px; color:var(--marron3)">${o.bonifType}</small>` : '';
+        rows+=`<tr>
+          <td rowspan="${rspan}">#${o.seq}</td>
+          <td rowspan="${rspan}">${o.hora}</td>
+          <td rowspan="${rspan}">${o.name}</td>
+          <td>${item.e} ${item.name} <strong style="color:var(--marron)">x${item.qty}</strong></td>
+          <td rowspan="${rspan}" style="text-align:right">$${bruto.toLocaleString('es-AR')}</td>
+          <td rowspan="${rspan}" style="text-align:right; color:var(--rojo)">${desc>0?'-$'+desc.toLocaleString('es-AR'):''}${bonifLabel}</td>
+          <td rowspan="${rspan}" style="text-align:right; font-weight:900; color:var(--marron)">$${neto.toLocaleString('es-AR')}</td>
+          <td rowspan="${rspan}">${o.payMethod}</td>
+          <td rowspan="${rspan}">${o.propina?'$'+o.propina.toLocaleString('es-AR'):''}</td>
+        </tr>`;
+      } else {
+        rows+=`<tr><td>${item.e} ${item.name} <strong style="color:var(--marron)">x${item.qty}</strong></td></tr>`;
+      }
     });
   });
   const el = document.getElementById('planContent');
-  if(el) el.innerHTML=ls.length?`<div style="overflow-x:auto"><table class="plan-table"><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Items</th><th>Total ítem</th><th>Pago</th><th>Propina</th><th>Prep.</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5" style="font-weight:900;">TOTAL TURNO (Compartido)</td><td style="text-align:right">$${tv.toLocaleString('es-AR')}</td><td></td><td>$${tp.toLocaleString('es-AR')}</td><td></td></tr></tfoot></table></div>`:'<div class="noo">Sin ventas en este turno</div>';
+  if(el) el.innerHTML=ls.length?`<div style="overflow-x:auto"><table class="plan-table"><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Items</th><th style="text-align:right">Bruto</th><th style="text-align:right">Desc.</th><th style="text-align:right">Neto</th><th>Pago</th><th>Propina</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" style="font-weight:900;">TOTAL TURNO (Compartido)</td><td style="text-align:right; font-size:12px;">$${tv.toLocaleString('es-AR')}</td><td></td><td>$${tp.toLocaleString('es-AR')}</td></tr></tfoot></table></div>`:'<div class="noo">Sin ventas en este turno</div>';
   renderPagoTotales(ls);
 }
 function renderPagoTotales(ls){
@@ -1482,6 +1504,10 @@ function renderPagoTotales(ls){
 }
 
 async function finalizarTurno(isAutoClose = false, msgOverride = null){
+  // 1. Matar el reloj sincronizador para evitar duplicados por Auto-Login
+  clearInterval(clockInterval);
+  isSyncing = true; // Bloquea cualquier red secundaria
+
   const ls=orders.filter(o=>o.status==='cerrado');
   
   const inInsumos = document.getElementById('obsInsumos');
@@ -1497,7 +1523,7 @@ async function finalizarTurno(isAutoClose = false, msgOverride = null){
   
   ls.forEach(o=>{ 
     const sub = calcSubtotal(o);
-    const desc = calcDiscount(o);
+    const desc = calcDiscount(o) || o.descuentoAplicado || 0;
     const net = calcTotal(o);
     
     subtotal += sub;
@@ -1526,8 +1552,11 @@ async function finalizarTurno(isAutoClose = false, msgOverride = null){
   
   if(inInsumos) inInsumos.value=''; if(inDesperdicio) inDesperdicio.value=''; if(inGeneral) inGeneral.value='';
   
+  // 2. Limpiar TODA la memoria local permanentemente
+  S = null; orders = []; cart = {};
+  clearSession(); clearLocal();
+  
   if(isAutoClose) { 
-    clearSession(); clearLocal(); 
     alert(msgOverride || "Turno cerrado de forma automática.");
     location.reload(); 
     return; 
@@ -1536,7 +1565,6 @@ async function finalizarTurno(isAutoClose = false, msgOverride = null){
   if(btn){btn.disabled=false; btn.textContent="✓ Finalizar turno y sincronizar";}
   const subEl = document.getElementById('endSub'); if(subEl) subEl.textContent=`${ls.length} ventas · $${totalNeto.toLocaleString('es-AR')} · Sincronizado a Sheets`;
   const ov = document.getElementById('endOv'); if(ov) ov.classList.add('open');
-  clearSession(); clearLocal();
 }
 
 function closeEnd(){ const el = document.getElementById('endOv'); if(el) el.classList.remove('open'); location.reload();}
